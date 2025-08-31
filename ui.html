@@ -1,0 +1,120 @@
+<style>
+  :root {
+    --brand-primary: #6D28D9; /* Roxo - ajuste para a cor da sua marca */
+    --brand-primary-hover: #5B21B6;
+    --brand-secondary: #10B981; /* Verde - para o botão de copiar */
+    --brand-secondary-hover: #059669;
+    --text-primary: #1F2937;
+    --text-secondary: #6B7280;
+    --bg-main: #FFFFFF;
+    --bg-textarea: #F9FAFB;
+    --border-color: #D1D5DB;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+  }
+  .container {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    box-sizing: border-box;
+  }
+  button {
+    border: none;
+    border-radius: 6px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out;
+  }
+  button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  #generate {
+    background-color: var(--brand-primary);
+    color: white;
+    margin-bottom: 16px;
+  }
+  #generate:not(:disabled):hover {
+    background-color: var(--brand-primary-hover);
+  }
+  #copyBtn {
+    background-color: var(--brand-secondary);
+    color: white;
+    margin-top: 12px;
+  }
+  #copyBtn:not(:disabled):hover {
+    background-color: var(--brand-secondary-hover);
+  }
+  textarea {
+    flex-grow: 1;
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 12px;
+    resize: none;
+    font-family: 'SF Mono', 'Consolas', 'Courier New', monospace;
+    font-size: 12px;
+    background-color: var(--bg-textarea);
+    color: var(--text-primary);
+  }
+  textarea:focus {
+    outline: none;
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 2px rgba(109, 40, 217, 0.2);
+  }
+</style>
+
+<div class="container">
+  <button id="generate">Converter Seleção</button>
+  <textarea id="output" readonly placeholder="Selecione um ou mais elementos no Figma e clique em 'Converter'..."></textarea>
+  <button id="copyBtn" style="display: none;">Copiar Código</button>
+</div>
+
+<script>
+  // O JavaScript daqui para baixo pode permanecer o mesmo.
+  // A lógica de mostrar/esconder o botão e enviar mensagens está correta.
+  
+  const generateBtn = document.getElementById('generate');
+  const outputTextarea = document.getElementById('output');
+  const copyBtn = document.getElementById('copyBtn');
+
+  generateBtn.onclick = () => {
+    generateBtn.textContent = 'A Converter...';
+    generateBtn.disabled = true;
+    outputTextarea.value = '';
+    copyBtn.style.display = 'none';
+    parent.postMessage({ pluginMessage: { type: 'generate-html-for-selection' } }, '*');
+  };
+
+  copyBtn.onclick = () => {
+    const textToCopy = outputTextarea.value;
+    parent.postMessage({ pluginMessage: { type: 'copy-to-clipboard', text: textToCopy } }, '*');
+  };
+
+  window.onmessage = (event) => {
+    const { type, payload } = event.data.pluginMessage;
+
+    if (type === 'generated-html') {
+      outputTextarea.value = payload;
+      generateBtn.textContent = 'Converter Seleção';
+      generateBtn.disabled = false;
+      copyBtn.style.display = payload ? 'block' : 'none';
+    }
+    
+    if (type === 'copy-success') {
+        copyBtn.textContent = 'Copiado!';
+        setTimeout(() => {
+            copyBtn.textContent = 'Copiar Código';
+        }, 2000);
+    }
+  };
+</script>
