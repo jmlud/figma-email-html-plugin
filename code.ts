@@ -1,6 +1,3 @@
-// src/code.ts (VERSÃO FINAL, COMPLETA E CORRIGIDA)
-
-// --- Funções Utilitárias e Classes Auxiliares ---
 
 function figmaColorToHex(color: RGB): string {
   const toHex = (c: number) => ('0' + Math.round(c * 255).toString(16)).slice(-2);
@@ -9,7 +6,7 @@ function figmaColorToHex(color: RGB): string {
 
 async function textStyleToInline(node: TextNode): Promise<string> {
   const styles: string[] = [];
-  // Carregar a fonte é uma operação assíncrona
+  
   await figma.loadFontAsync(node.fontName as FontName);
 
   const fontFamily = (node.fontName as FontName).family;
@@ -63,8 +60,6 @@ class ContentBlock {
   }
 }
 
-
-// --- O PARSER AVANÇADO PARA O PLUGIN ---
 
 class FigmaPluginParser {
 
@@ -224,12 +219,10 @@ class FigmaPluginParser {
 
   public async parse(nodes: readonly SceneNode[]): Promise<string> {
     
-    // --- LÓGICA DE MÚLTIPLAS SELEÇÕES AQUI ---
     if (nodes.length === 0) {
       return '';
     }
     
-    // Se apenas um nó for selecionado, o comportamento é o mesmo de antes.
     if (nodes.length === 1) {
       const html = await this.renderNode(nodes[0]);
       // A limpeza final aplica-se aqui também
@@ -277,8 +270,6 @@ class FigmaPluginParser {
     return cleanedHtml;
   }
 }
-
-// --- Lógica Principal do Plugin ---
 
 figma.showUI(__html__, { width: 400, height: 450 });
 
