@@ -1,16 +1,45 @@
+const bulletCharacterMap: { [key: string]: string } = {
+  '•': '&#8226;',
+  '*': '&#8226;',
+  '-': '&#8211;',
+};
+
 function figmaColorToHex(color: RGB): string {
   const toHex = (c: number) => ('0' + Math.round(c * 255).toString(16)).slice(-2);
   return `#${toHex(color.r)}${toHex(color.g)}${toHex(color.b)}`;
 }
 
+function hasVisualProperties(node: SceneNode): boolean {
+    if ('fills' in node && Array.isArray(node.fills) && node.fills.some(f => f.visible !== false && f.opacity !== 0)) {
+        return true;
+    }
+    if ('paddingTop' in node && (node.paddingTop > 0 || node.paddingBottom > 0 || node.paddingLeft > 0 || node.paddingRight > 0)) {
+        return true;
+    }
+    return false;
+}
+
 function isPotentialCta(node: SceneNode): node is FrameNode | GroupNode {
   if (node.type !== 'FRAME' && node.type !== 'GROUP') return false;
   if (node.children.length !== 2) return false;
-
   const hasText = node.children.some(child => child.type === 'TEXT');
   const hasShape = node.children.some(child => child.type === 'RECTANGLE' || child.type === 'ELLIPSE');
-
   return hasText && hasShape;
+}
+
+function isBulletPoint(node: SceneNode): node is FrameNode {
+  if (node.type !== 'FRAME' || !node.visible) {
+    return false;
+  }
+  if (node.layoutMode !== 'HORIZONTAL' || node.children.length !== 2) {
+    return false;
+  }
+  const [firstChild, secondChild] = node.children;
+  if (firstChild.type !== 'TEXT' || secondChild.type !== 'TEXT') {
+    return false;
+  }
+  const bulletChar = firstChild.characters.trim();
+  return bulletChar.length === 1 && bulletChar in bulletCharacterMap;
 }
 
 class FigmaPluginParser {
@@ -21,41 +50,53 @@ class FigmaPluginParser {
   }
 
   private async renderNode(node: SceneNode): Promise<string> {
-    if (!node.visible) return '';
-    
-    if (this.confirmedCtaIds.has(node.id) && isPotentialCta(node)) {
-        return this.renderCta(node);
-    }
-    
-    const isImageNode = node.type === 'RECTANGLE' && node.name.match(/\.(jpg|jpeg|png|gif)$/i);
-    if (isImageNode) {
-        return this.renderImagePlaceholder(node);
-    }
+    if (!node.visible) return ``;
     
     switch (node.type) {
       case 'FRAME':
       case 'GROUP':
       case 'COMPONENT':
       case 'INSTANCE':
+        if (this.confirmedCtaIds.has(node.id) && isPotentialCta(node)) {
+            return this.renderCta(node);
+        }
+        if (isBulletPoint(node)) {
+            return this.renderBulletPoint(node);
+        }
         return this.renderContainer(node);
+      
       case 'RECTANGLE':
+        if (node.name.match(/\.(jpg|jpeg|png|gif)$/i)) {
+            return this.renderImagePlaceholder(node);
+        }
+        return this.renderShape(node);
+      
       case 'ELLIPSE':
         return this.renderShape(node);
+
       case 'TEXT':
         return this.renderText(node);
+
       default:
         return ``;
     }
   }
 
+  private async renderBulletPoint(node: FrameNode): Promise<string> {
+      const bulletNode = node.children[0] as TextNode;
+      const textNode = node.children[1] as TextNode;
+      const spacerWidth = node.itemSpacing || 8;
+      const bulletHtml = await this.renderStyledTextSegmentsToHtml(bulletNode);
+      const textHtml = await this.renderStyledTextSegmentsToHtml(textNode);
+      return `<tr><td style="text-align: left;" valign="top">${bulletHtml}</td><td width="${spacerWidth}">&nbsp;</td><td style="text-align: left;" valign="top">${textHtml}</td></tr>`;
+  }
+
   private async renderCta(node: FrameNode | GroupNode): Promise<string> {
     const shapeNode = node.children.find(n => n.type === 'RECTANGLE' || n.type === 'ELLIPSE') as RectangleNode;
     const textNode = node.children.find(n => n.type === 'TEXT') as TextNode;
-
     const fill = shapeNode.fills && Array.isArray(shapeNode.fills) ? (shapeNode.fills.find(f => f.type === 'SOLID') as SolidPaint) : undefined;
     const bgColor = fill ? figmaColorToHex(fill.color) : '#6D28D9';
     const borderRadius = shapeNode.cornerRadius && typeof shapeNode.cornerRadius === 'number' ? shapeNode.cornerRadius : 6;
-
     const textSegments = textNode.getStyledTextSegments(['fontName', 'fontSize', 'fills']);
     await figma.loadFontAsync(textSegments[0].fontName);
     const textFill = textSegments[0].fills && Array.isArray(textSegments[0].fills) ? (textSegments[0].fills.find(f => f.type === 'SOLID') as SolidPaint) : undefined;
@@ -63,27 +104,22 @@ class FigmaPluginParser {
     const { family, style } = textSegments[0].fontName;
     const fontWeight = style.toLowerCase().includes('bold') ? '700' : '400';
     const fontSize = Math.round(textSegments[0].fontSize);
-
-    
     const href = '#';
-
-    return `
-      <table border="0" cellpadding="0" cellspacing="0" role="presentation">
-        <tr>
-          <td align="center" style="border-radius: ${borderRadius}px; background: ${bgColor};" bgcolor="${bgColor}">
-            <a href="${href}" target="_blank" style="font-family: ${family}, Arial, sans-serif; font-size: ${fontSize}px; font-weight: ${fontWeight}; color: ${textColor}; text-decoration: none; padding: 12px 24px; border-radius: ${borderRadius}px; display: inline-block;">
-              ${textNode.characters}
-            </a>
-          </td>
-        </tr>
-      </table>
-    `;
+    return `<table border="0" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="center" style="border-radius: ${borderRadius}px; background: ${bgColor};" bgcolor="${bgColor}"><a href="${href}" target="_blank" style="font-family: ${family}, Arial, sans-serif; font-size: ${fontSize}px; font-weight: ${fontWeight}; color: ${textColor}; text-decoration: none; padding: 12px 24px; border-radius: ${borderRadius}px; display: inline-block;">${textNode.characters}</a></td></tr></table>`;
   }
 
   private async renderContainer(node: FrameNode | GroupNode | ComponentNode | InstanceNode): Promise<string> {
-    if (!('children' in node) || node.children.length === 0) {
+    if (!('children' in node)) {
+        return this.renderShape(node as FrameNode);
+    }
+    const visibleChildren = node.children.filter(child => child.visible);
+    if (visibleChildren.length === 0) {
       return this.renderShape(node as FrameNode);
     }
+    if (visibleChildren.length === 1 && !hasVisualProperties(node)) {
+        return this.renderNode(visibleChildren[0]);
+    }
+
     const nodeWidth = node.width;
     const fills = (node as FrameNode | ComponentNode | InstanceNode).fills;
     const bgColorFill = 'fills' in node && Array.isArray(fills) ? (fills.find(f => f.type === 'SOLID') as SolidPaint) : undefined;
@@ -101,7 +137,16 @@ class FigmaPluginParser {
     const tableBgColor = bgColor ? `bgcolor="${bgColor}"` : '';
     const paddingTopHtml = paddingTop > 0 ? `<tr><td height="${paddingTop}" style="font-size:1px; line-height:${paddingTop}px;">&nbsp;</td></tr>` : '';
     const paddingBottomHtml = paddingBottom > 0 ? `<tr><td height="${paddingBottom}" style="font-size:1px; line-height:${paddingBottom}px;">&nbsp;</td></tr>` : '';
-    const contentRowHtml = innerHtml.trim() !== '' ? `<tr><td>${innerHtml}</td></tr>` : '';
+    
+    let contentRowHtml = '';
+    if (innerHtml.trim() !== '') {
+        if (innerHtml.trim().startsWith('<tr')) {
+            contentRowHtml = innerHtml;
+        } else {
+            contentRowHtml = `<tr><td>${innerHtml}</td></tr>`;
+        }
+    }
+    
     const finalInnerHtml = `${paddingTopHtml}${contentRowHtml}${paddingBottomHtml}`;
     return `<table width="${Math.round(nodeWidth)}" border="0" cellpadding="0" cellspacing="0" style="${tableStyle}" ${tableBgColor}>${finalInnerHtml}</table>`;
   }
@@ -119,11 +164,16 @@ class FigmaPluginParser {
         rows.push(`<tr><td height="${Math.round(verticalGap)}" style="font-size:1px; line-height:${Math.round(verticalGap)}px;">&nbsp;</td></tr>`);
       }
       const childHtml = await this.renderNode(child);
-      let paddingStyle = '';
-      if (paddingLeft > 0) paddingStyle += `padding-left:${paddingLeft}px;`;
-      if (paddingRight > 0) paddingStyle += `padding-right:${paddingRight}px;`;
       if (childHtml.trim()){
-        rows.push(`<tr><td style="${paddingStyle}" valign="top">${childHtml}</td></tr>`);
+        let paddingStyle = '';
+        if (paddingLeft > 0) paddingStyle += `padding-left:${paddingLeft}px;`;
+        if (paddingRight > 0) paddingStyle += `padding-right:${paddingRight}px;`;
+        
+        if (childHtml.trim().startsWith('<tr')) {
+            rows.push(childHtml);
+        } else {
+            rows.push(`<tr><td style="${paddingStyle}" valign="top">${childHtml}</td></tr>`);
+        }
       }
       lastBottomY = child.y + child.height;
     }
@@ -150,7 +200,7 @@ class FigmaPluginParser {
     return `<table border="0" cellpadding="0" cellspacing="0"><tr>${cols.join('')}</tr></table>`;
   }
   
-  private async renderText(node: TextNode): Promise<string> {
+  private async renderStyledTextSegmentsToHtml(node: TextNode): Promise<string> {
     if (!node.characters || node.characters.length === 0) return '';
     const segments = node.getStyledTextSegments(['fontName', 'fontSize', 'fills', 'letterSpacing', 'lineHeight', 'textDecoration']);
     let htmlContent = '';
@@ -175,8 +225,15 @@ class FigmaPluginParser {
         styles.push('text-decoration: underline');
       }
       const content = segment.characters.replace(/\n/g, '<br />');
-      htmlContent += `<span style="${styles.join('; ')}">${content}</span>`;
+      const finalContent = bulletCharacterMap[content.trim()] || content;
+      htmlContent += `<span style="${styles.join('; ')}">${finalContent}</span>`;
     }
+    return htmlContent;
+  }
+  
+  private async renderText(node: TextNode): Promise<string> {
+    const htmlContent = await this.renderStyledTextSegmentsToHtml(node);
+    if (!htmlContent) return '';
     const containerStyles: string[] = [`text-align: ${(node.textAlignHorizontal || 'LEFT').toLowerCase()}`];
     return `<table width="100%" border="0" cellpadding="0" cellspacing="0"><tr><td style="${containerStyles.join(';')}" valign="top">${htmlContent}</td></tr></table>`;
   }
@@ -213,8 +270,14 @@ class FigmaPluginParser {
           }
         }
         const nodeHtml = await this.renderNode(node);
-        rows.push(`<tr><td>${nodeHtml}</td></tr>`);
-        lastBottomY = node.y + node.height;
+        if (nodeHtml.trim().startsWith('<tr')) {
+            rows.push(nodeHtml);
+        } else if (nodeHtml.trim()) {
+            rows.push(`<tr><td>${nodeHtml}</td></tr>`);
+        }
+        if (node.visible) {
+            lastBottomY = node.y + node.height;
+        }
       }
       finalHtml = `<table width="100%" border="0" cellpadding="0" cellspacing="0">${rows.join('')}</table>`;
     }
@@ -235,7 +298,6 @@ const processSelection = async (confirmedCtaIds: string[] = []) => {
     figma.ui.postMessage({ type: 'generated-html', payload: '' });
     return;
   }
-  
   const parser = new FigmaPluginParser();
   parser.setConfirmedCtaIds(confirmedCtaIds);
   const html = await parser.parse(selectedNodes);
@@ -245,14 +307,11 @@ const processSelection = async (confirmedCtaIds: string[] = []) => {
 figma.ui.onmessage = async (msg: PluginMessage) => {
   if (msg.type === 'generate-html-for-selection') {
     const selectedNodes = figma.currentPage.selection;
-
     const allNodes = selectedNodes.reduce<SceneNode[]>((acc, node) => {
       const children = (node.type === 'FRAME' || node.type === 'GROUP' || node.type === 'COMPONENT' || node.type === 'INSTANCE') ? node.findAll(() => true) : [];
       return acc.concat(node, ...children);
     }, []);
-    
     const potentialCtas = allNodes.filter(isPotentialCta);
-
     if (potentialCtas.length > 0) {
       figma.ui.postMessage({
         type: 'request-cta-confirmations',
@@ -262,7 +321,6 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
       await processSelection();
     }
   }
-
   if (msg.type === 'cta-confirmations-response') {
     await processSelection(msg.payload.confirmedCtaIds);
   }
