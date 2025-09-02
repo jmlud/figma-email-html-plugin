@@ -4,45 +4,28 @@ const bulletCharacterMap: { [key: string]: string } = {
   '-': '&#8211;',
 };
 
-// --- NOVAS FUNÇÕES AUXILIARES ---
-
-/**
- * Mistura uma cor de primeiro plano com opacidade sobre uma cor de fundo sólida.
- * @param fgFill O preenchimento do primeiro plano (com cor e opacidade).
- * @param bgRgb A cor de fundo sólida (no formato {r, g, b}).
- * @returns A cor hexadecimal final e sólida.
- */
 function blendAndGetSolidHex(fgFill: SolidPaint, bgRgb: RGB): string {
   const fgRgb = fgFill.color;
   const alpha = fgFill.opacity ?? 1;
-
-  // Fórmula de Alpha Blending: C = C_fg * α + C_bg * (1 - α)
   const r = fgRgb.r * alpha + bgRgb.r * (1 - alpha);
   const g = fgRgb.g * alpha + bgRgb.g * (1 - alpha);
   const b = fgRgb.b * alpha + bgRgb.b * (1 - alpha);
-
   return figmaColorToHex({ r, g, b });
 }
 
-/**
- * Percorre a hierarquia de nós a partir de um nó para encontrar a cor de fundo sólida mais próxima.
- * @param node O nó a partir do qual a busca começa.
- * @returns A cor de fundo sólida no formato {r, g, b}. Retorna branco como padrão.
- */
 function findBackgroundColor(node: SceneNode): RGB {
   let parent = node.parent;
   while (parent && parent.type !== 'PAGE') {
     if ('fills' in parent && Array.isArray(parent.fills) && parent.fills.length > 0) {
       const solidFill = parent.fills.find(f => f.type === 'SOLID' && f.visible) as SolidPaint;
       if (solidFill && (solidFill.opacity ?? 1) === 1) {
-        return solidFill.color; 
+        return solidFill.color;
       }
     }
     parent = parent.parent;
   }
-  return { r: 1, g: 1, b: 1 }; 
+  return { r: 1, g: 1, b: 1 };
 }
-
 
 function figmaColorToHex(color: RGB): string {
   const toHex = (c: number) => ('0' + Math.round(c * 255).toString(16)).slice(-2);
@@ -50,13 +33,13 @@ function figmaColorToHex(color: RGB): string {
 }
 
 function hasVisualProperties(node: SceneNode): boolean {
-    if ('fills' in node && Array.isArray(node.fills) && node.fills.some(f => f.visible !== false && f.opacity !== 0)) {
-        return true;
-    }
-    if ('paddingTop' in node && (node.paddingTop > 0 || node.paddingBottom > 0 || node.paddingLeft > 0 || node.paddingRight > 0)) {
-        return true;
-    }
-    return false;
+  if ('fills' in node && Array.isArray(node.fills) && node.fills.some(f => f.visible !== false && f.opacity !== 0)) {
+    return true;
+  }
+  if ('paddingTop' in node && (node.paddingTop > 0 || node.paddingBottom > 0 || node.paddingLeft > 0 || node.paddingRight > 0)) {
+    return true;
+  }
+  return false;
 }
 
 function isPotentialCta(node: SceneNode): node is FrameNode | GroupNode {
@@ -98,58 +81,61 @@ class FigmaPluginParser {
     return figmaColorToHex(fill.color);
   }
 
+  private buildStyleAttribute(styles: string[]): string {
+    const filteredStyles = styles.filter(s => s);
+    if (filteredStyles.length === 0) {
+      return '';
+    }
+    return `style="${filteredStyles.join('; ')}"`;
+  }
+
   private async renderNode(node: SceneNode): Promise<string> {
     if (!node.visible) return ``;
-    
     switch (node.type) {
       case 'FRAME':
       case 'GROUP':
       case 'COMPONENT':
       case 'INSTANCE':
         if (this.confirmedCtaIds.has(node.id) && isPotentialCta(node)) {
-            return this.renderCta(node);
+          return this.renderCta(node);
         }
         if (isBulletPoint(node)) {
-            return this.renderBulletPoint(node);
+          return this.renderBulletPoint(node);
         }
         return this.renderContainer(node);
-      
       case 'RECTANGLE':
         if (node.name.match(/\.(jpg|jpeg|png|gif)$/i)) {
-            return this.renderImagePlaceholder(node);
+          return this.renderImagePlaceholder(node);
         }
         return this.renderShape(node);
-      
       case 'ELLIPSE':
         return this.renderShape(node);
-
       case 'TEXT':
         return this.renderText(node);
-
       default:
         return ``;
     }
   }
 
   private async renderBulletPoint(node: FrameNode): Promise<string> {
-      const bulletNode = node.children[0] as TextNode;
-      const textNode = node.children[1] as TextNode;
-      const spacerWidth = node.itemSpacing || 8;
-      const bulletHtml = await this.renderStyledTextSegmentsToHtml(bulletNode);
-      const textHtml = await this.renderStyledTextSegmentsToHtml(textNode);
-      return `<tr><td style="text-align: left;" valign="top">${bulletHtml}</td><td width="${spacerWidth}">&nbsp;</td><td style="text-align: left;" valign="top">${textHtml}</td></tr>`;
+    const bulletNode = node.children[0] as TextNode;
+    const textNode = node.children[1] as TextNode;
+    const spacerWidth = node.itemSpacing || 8;
+    const bulletHtml = await this.renderStyledTextSegmentsToHtml(bulletNode);
+    const textHtml = await this.renderStyledTextSegmentsToHtml(textNode);
+    return `<tr><td style="text-align: left;" valign="top">${bulletHtml}</td><td width="${spacerWidth}">&nbsp;</td><td style="text-align: left;" valign="top">${textHtml}</td></tr>`;
   }
 
   private async renderCta(node: FrameNode | GroupNode): Promise<string> {
     const shapeNode = node.children.find(n => n.type === 'RECTANGLE' || n.type === 'ELLIPSE') as RectangleNode;
     const textNode = node.children.find(n => n.type === 'TEXT') as TextNode;
     const fill = shapeNode.fills && Array.isArray(shapeNode.fills) ? (shapeNode.fills.find(f => f.type === 'SOLID' && f.visible) as SolidPaint) : undefined;
-    const bgColor = fill ? this.getSolidHexForFill(fill, shapeNode) : '#6D28D9'; // AJUSTADO
+    const bgColor = fill ? this.getSolidHexForFill(fill, shapeNode) : '#6D28D9';
     const borderRadius = shapeNode.cornerRadius && typeof shapeNode.cornerRadius === 'number' ? shapeNode.cornerRadius : 6;
     const textSegments = textNode.getStyledTextSegments(['fontName', 'fontSize', 'fills']);
     await figma.loadFontAsync(textSegments[0].fontName);
     const textFill = textSegments[0].fills && Array.isArray(textSegments[0].fills) ? (textSegments[0].fills.find(f => f.type === 'SOLID') as SolidPaint) : undefined;
-    const textColor = textFill ? this.getSolidHexForFill(textFill, textNode) : '#FFFFFF'; // AJUSTADO
+    const textColor = textFill ? this.getSolidHexForFill(textFill, textNode) : '#FFFFFF';
     const { family, style } = textSegments[0].fontName;
     const fontWeight = style.toLowerCase().includes('bold') ? '700' : '400';
     const fontSize = Math.round(textSegments[0].fontSize);
@@ -159,20 +145,19 @@ class FigmaPluginParser {
 
   private async renderContainer(node: FrameNode | GroupNode | ComponentNode | InstanceNode): Promise<string> {
     if (!('children' in node)) {
-        return this.renderShape(node as FrameNode);
+      return this.renderShape(node as FrameNode);
     }
     const visibleChildren = node.children.filter(child => child.visible);
     if (visibleChildren.length === 0) {
       return this.renderShape(node as FrameNode);
     }
     if (visibleChildren.length === 1 && !hasVisualProperties(node)) {
-        return this.renderNode(visibleChildren[0]);
+      return this.renderNode(visibleChildren[0]);
     }
-
     const nodeWidth = node.width;
     const fills = (node as FrameNode | ComponentNode | InstanceNode).fills;
     const bgColorFill = 'fills' in node && Array.isArray(fills) ? (fills.find(f => f.type === 'SOLID' && f.visible) as SolidPaint) : undefined;
-    const bgColor = bgColorFill ? this.getSolidHexForFill(bgColorFill, node) : undefined; // AJUSTADO
+    const bgColor = bgColorFill ? this.getSolidHexForFill(bgColorFill, node) : undefined;
     const paddingTop = 'paddingTop' in node ? node.paddingTop : 0;
     const paddingBottom = 'paddingBottom' in node ? node.paddingBottom : 0;
     const layoutMode = 'layoutMode' in node ? node.layoutMode : 'NONE';
@@ -182,24 +167,22 @@ class FigmaPluginParser {
     } else {
       innerHtml = await this.renderStackedChildren(node);
     }
-    const tableStyle = bgColor ? `background-color:${bgColor};` : '';
+    const tableStyleAttr = this.buildStyleAttribute([bgColor ? `background-color:${bgColor}` : '']);
     const tableBgColor = bgColor ? `bgcolor="${bgColor}"` : '';
     const paddingTopHtml = paddingTop > 0 ? `<tr><td height="${paddingTop}" style="font-size:1px; line-height:${paddingTop}px;">&nbsp;</td></tr>` : '';
     const paddingBottomHtml = paddingBottom > 0 ? `<tr><td height="${paddingBottom}" style="font-size:1px; line-height:${paddingBottom}px;">&nbsp;</td></tr>` : '';
-    
     let contentRowHtml = '';
     if (innerHtml.trim() !== '') {
-        if (innerHtml.trim().startsWith('<tr')) {
-            contentRowHtml = innerHtml;
-        } else {
-            contentRowHtml = `<tr><td>${innerHtml}</td></tr>`;
-        }
+      if (innerHtml.trim().startsWith('<tr')) {
+        contentRowHtml = innerHtml;
+      } else {
+        contentRowHtml = `<tr><td>${innerHtml}</td></tr>`;
+      }
     }
-    
     const finalInnerHtml = `${paddingTopHtml}${contentRowHtml}${paddingBottomHtml}`;
-    return `<table width="${Math.round(nodeWidth)}" border="0" cellpadding="0" cellspacing="0" style="${tableStyle}" ${tableBgColor}>${finalInnerHtml}</table>`;
+    return `<table width="${Math.round(nodeWidth)}" border="0" cellpadding="0" cellspacing="0" ${tableStyleAttr} ${tableBgColor}>${finalInnerHtml}</table>`;
   }
-  
+
   private async renderStackedChildren(parentNode: FrameNode | GroupNode | ComponentNode | InstanceNode): Promise<string> {
     const children = [...parentNode.children].sort((a, b) => a.y - b.y);
     const rows: string[] = [];
@@ -213,22 +196,23 @@ class FigmaPluginParser {
         rows.push(`<tr><td height="${Math.round(verticalGap)}" style="font-size:1px; line-height:${Math.round(verticalGap)}px;">&nbsp;</td></tr>`);
       }
       const childHtml = await this.renderNode(child);
-      if (childHtml.trim()){
-        let paddingStyle = '';
-        if (paddingLeft > 0) paddingStyle += `padding-left:${paddingLeft}px;`;
-        if (paddingRight > 0) paddingStyle += `padding-right:${paddingRight}px;`;
-        
+      if (childHtml.trim()) {
+        const paddingStyles: string[] = [];
+        if (paddingLeft > 0) paddingStyles.push(`padding-left:${paddingLeft}px`);
+        if (paddingRight > 0) paddingStyles.push(`padding-right:${paddingRight}px`);
+        const styleAttr = this.buildStyleAttribute(paddingStyles);
+
         if (childHtml.trim().startsWith('<tr')) {
-            rows.push(childHtml);
+          rows.push(childHtml);
         } else {
-            rows.push(`<tr><td style="${paddingStyle}" valign="top">${childHtml}</td></tr>`);
+          rows.push(`<tr><td ${styleAttr} valign="top">${childHtml}</td></tr>`);
         }
       }
       lastBottomY = child.y + child.height;
     }
     return `<table width="100%" border="0" cellpadding="0" cellspacing="0">${rows.join('')}</table>`;
   }
-  
+
   private async renderHorizontalChildren(parentNode: FrameNode): Promise<string> {
     const children = [...parentNode.children].sort((a, b) => a.x - b.x);
     const cols: string[] = [];
@@ -248,29 +232,24 @@ class FigmaPluginParser {
     if (paddingRight > 0) cols.push(`<td width="${paddingRight}">&nbsp;</td>`);
     return `<table border="0" cellpadding="0" cellspacing="0"><tr>${cols.join('')}</tr></table>`;
   }
-  
+
   private async renderStyledTextSegmentsToHtml(node: TextNode): Promise<string> {
     if (!node.characters || node.characters.length === 0) return '';
     const segments = node.getStyledTextSegments(['fontName', 'fontSize', 'fills', 'lineHeight', 'textDecoration']);
     let htmlContent = '';
-    
     for (const segment of segments) {
       await figma.loadFontAsync(segment.fontName);
       const styles: string[] = [];
       const { family, style } = segment.fontName;
       const { fills, fontSize, lineHeight, textDecoration } = segment;
-
       if (Array.isArray(fills) && fills.length > 0 && fills[0].type === 'SOLID') {
         const solidFill = fills[0] as SolidPaint;
-        styles.push(`color: ${this.getSolidHexForFill(solidFill, node)}`); // AJUSTADO
+        styles.push(`color: ${this.getSolidHexForFill(solidFill, node)}`);
       }
-      
       const fontStack = [...new Set([family, 'Arial', 'sans-serif'])];
       styles.push(`font-family: ${fontStack.join(', ')}`);
-      
       styles.push(`font-size: ${Math.round(fontSize)}px`);
       styles.push(`font-weight: ${style.toLowerCase().includes('bold') ? '700' : '400'}`);
-      
       if (lineHeight && lineHeight.unit !== 'AUTO') {
         styles.push(`line-height: ${Math.round(lineHeight.value)}px`);
       }
@@ -279,77 +258,62 @@ class FigmaPluginParser {
       }
       const content = segment.characters.replace(/\n/g, '<br />');
       const finalContent = bulletCharacterMap[content.trim()] || content;
-      htmlContent += `<span style="${styles.join('; ')}">${finalContent}</span>`;
+      const styleAttr = this.buildStyleAttribute(styles);
+      htmlContent += `<span ${styleAttr}>${finalContent}</span>`;
     }
     return htmlContent;
   }
-  
+
   private async renderText(node: TextNode): Promise<string> {
     if (!node.characters || node.characters.length === 0) return '';
-    
     const styleProperties: ("fontName" | "fontSize" | "fills" | "lineHeight" | "textDecoration")[] = ['fontName', 'fontSize', 'fills', 'lineHeight', 'textDecoration'];
     const segments = node.getStyledTextSegments(styleProperties);
     if (segments.length === 0) return '';
-
     type StyleSegment = typeof segments[0];
-
     const fontsToLoad = [...new Set(segments.map(s => s.fontName))];
     await Promise.all(fontsToLoad.map(font => figma.loadFontAsync(font as FontName)));
-
-    const getStyleObject = (segment: StyleSegment, ownerNode: SceneNode): { [key: string]: string } => { // AJUSTADO
-        const { family, style } = segment.fontName;
-        const { fills, fontSize, lineHeight, textDecoration } = segment;
-        const props: { [key: string]: string } = {};
-
-        if (fills && Array.isArray(fills) && fills.length > 0 && fills[0].type === 'SOLID') {
-            const solidFill = fills[0] as SolidPaint;
-            props.color = this.getSolidHexForFill(solidFill, ownerNode); // AJUSTADO
-        }
-        const fontStack = [...new Set([family, 'Arial', 'sans-serif'])];
-        props['font-family'] = fontStack.join(', ');
-        props['font-size'] = `${Math.round(fontSize as number)}px`;
-        props['font-weight'] = style.toLowerCase().includes('bold') ? '700' : '400';
-        if (lineHeight && 'value' in lineHeight) {
-            props['line-height'] = `${Math.round(lineHeight.value)}px`;
-        }
-        if (textDecoration === 'UNDERLINE') {
-            props['text-decoration'] = 'underline';
-        }
-        return props;
+    const getStyleObject = (segment: StyleSegment, ownerNode: SceneNode): { [key: string]: string } => {
+      const { family, style } = segment.fontName;
+      const { fills, fontSize, lineHeight, textDecoration } = segment;
+      const props: { [key: string]: string } = {};
+      if (fills && Array.isArray(fills) && fills.length > 0 && fills[0].type === 'SOLID') {
+        const solidFill = fills[0] as SolidPaint;
+        props.color = this.getSolidHexForFill(solidFill, ownerNode);
+      }
+      const fontStack = [...new Set([family, 'Arial', 'sans-serif'])];
+      props['font-family'] = fontStack.join(', ');
+      props['font-size'] = `${Math.round(fontSize as number)}px`;
+      props['font-weight'] = style.toLowerCase().includes('bold') ? '700' : '400';
+      if (lineHeight && 'value' in lineHeight) {
+        props['line-height'] = `${Math.round(lineHeight.value)}px`;
+      }
+      if (textDecoration === 'UNDERLINE') {
+        props['text-decoration'] = 'underline';
+      }
+      return props;
     };
-
-    const baseStyle = getStyleObject(segments[0], node); // AJUSTADO
+    const baseStyle = getStyleObject(segments[0], node);
     const tdStyles: { [key: string]: string } = { ...baseStyle };
     tdStyles['text-align'] = (node.textAlignHorizontal || 'LEFT').toLowerCase();
-    
-    const tdStyleString = Object.keys(tdStyles)
-        .map(key => `${key}: ${tdStyles[key]}`)
-        .join('; ');
-
+    const tdStyleString = Object.keys(tdStyles).map(key => `${key}: ${tdStyles[key]}`).join('; ');
     let innerHtml = '';
     for (const segment of segments) {
-        const currentStyle = getStyleObject(segment, node); // AJUSTADO
-        const overrideStyles: { [key: string]: string } = {};
-
-        Object.keys(currentStyle).forEach(key => {
-            if (currentStyle[key] !== baseStyle[key]) {
-                overrideStyles[key] = currentStyle[key];
-            }
-        });
-
-        const content = segment.characters.replace(/\n/g, '<br />');
-        const finalContent = bulletCharacterMap[content.trim()] || content;
-
-        if (Object.keys(overrideStyles).length > 0) {
-            const overrideStyleString = Object.keys(overrideStyles)
-                .map(key => `${key}: ${overrideStyles[key]}`)
-                .join('; ');
-            innerHtml += `<span style="${overrideStyleString}">${finalContent}</span>`;
-        } else {
-            innerHtml += finalContent;
+      const currentStyle = getStyleObject(segment, node);
+      const overrideStyles: { [key: string]: string } = {};
+      Object.keys(currentStyle).forEach(key => {
+        if (currentStyle[key] !== baseStyle[key]) {
+          overrideStyles[key] = currentStyle[key];
         }
+      });
+      const content = segment.characters.replace(/\n/g, '<br />');
+      const finalContent = bulletCharacterMap[content.trim()] || content;
+      if (Object.keys(overrideStyles).length > 0) {
+        const overrideStyleString = Object.keys(overrideStyles).map(key => `${key}: ${overrideStyles[key]}`).join('; ');
+        innerHtml += `<span style="${overrideStyleString}">${finalContent}</span>`;
+      } else {
+        innerHtml += finalContent;
+      }
     }
-
     return `<table width="100%" border="0" cellpadding="0" cellspacing="0"><tr><td style="${tdStyleString}" valign="top">${innerHtml}</td></tr></table>`;
   }
 
@@ -357,14 +321,17 @@ class FigmaPluginParser {
     const { width, height } = node;
     const fills = (node as RectangleNode).fills;
     const fill = 'fills' in node && Array.isArray(fills) ? (fills.find(f => f.type === 'SOLID' && f.visible) as SolidPaint) : undefined;
-    const bgColor = fill ? `bgcolor="${this.getSolidHexForFill(fill, node)}"` : ''; // AJUSTADO
+    const bgColor = fill ? `bgcolor="${this.getSolidHexForFill(fill, node)}"` : '';
     return `<table width="${Math.round(width)}" height="${Math.round(height)}" border="0" cellpadding="0" cellspacing="0"><tr><td ${bgColor} style="font-size:1px; line-height:1px;">&nbsp;</td></tr></table>`;
   }
 
   private renderImagePlaceholder(node: SceneNode): string {
     const { width, height } = node;
-    const url = `https://placehold.co/${Math.round(width)}x${Math.round(height)}/EFEFEF/7F7F7F?text=${encodeURIComponent(node.name || `${Math.round(width)}x${Math.round(height)}`)}`;
-    return `<img src="${url}" width="${Math.round(width)}" alt="${node.name}" style="display: block; border: 0; width: ${Math.round(width)}px; height: auto;" />`;
+    if (width < 1 || height < 1) return '';
+    const w = Math.round(width);
+    const h = Math.round(height);
+    const url = `https://placehold.co/${w}x${h}/EFEFEF/7F7F7F?text=${encodeURIComponent(`${w} x ${h}`)}`;
+    return `<img src="${url}" width="${w}" alt="${node.name}" style="display: block; border: 0; width: 100%; max-width: ${w}px; height: auto;" />`;
   }
 
   public async parse(nodes: readonly SceneNode[]): Promise<string> {
@@ -386,12 +353,12 @@ class FigmaPluginParser {
         }
         const nodeHtml = await this.renderNode(node);
         if (nodeHtml.trim().startsWith('<tr')) {
-            rows.push(nodeHtml);
+          rows.push(nodeHtml);
         } else if (nodeHtml.trim()) {
-            rows.push(`<tr><td>${nodeHtml}</td></tr>`);
+          rows.push(`<tr><td>${nodeHtml}</td></tr>`);
         }
         if (node.visible) {
-            lastBottomY = node.y + node.height;
+          lastBottomY = node.y + node.height;
         }
       }
       finalHtml = `<table width="100%" border="0" cellpadding="0" cellspacing="0">${rows.join('')}</table>`;
@@ -409,7 +376,7 @@ figma.showUI(__html__, { width: 400, height: 450 });
 const processSelection = async (confirmedCtaIds: string[] = []) => {
   const selectedNodes = figma.currentPage.selection;
   if (selectedNodes.length === 0) {
-    figma.notify("Por favor, selecione pelo menos um elemento.");
+    figma.notify("Please select at least one element.");
     figma.ui.postMessage({ type: 'generated-html', payload: '' });
     return;
   }

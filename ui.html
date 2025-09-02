@@ -96,23 +96,22 @@
 </style>
 
 <div class="container">
-  <button id="generate">Converter Seleção</button>
-  <textarea id="output" readonly placeholder="Selecione um ou mais elementos no Figma e clique em 'Converter'..."></textarea>
-  <button id="copyBtn" style="display: none;">Copiar Código</button>
+  <button id="generate">Convert Selection</button>
+  <textarea id="output" readonly placeholder="Select one or more elements in Figma and click 'Convert'..."></textarea>
+  <button id="copyBtn" style="display: none;">Copy Code</button>
 </div>
 
 <div id="ctaModal" class="modal-overlay" style="display: none;">
   <div class="modal-content">
-    <h3>Confirmar Botões (CTAs)</h3>
-    <p style="font-size: 13px; color: var(--text-secondary);">Selecione os elementos que devem ser convertidos como botões clicáveis.</p>
+    <h3>Confirm Buttons (CTAs)</h3>
+    <p style="font-size: 13px; color: var(--text-secondary);">Select the elements that should be converted as clickable buttons.</p>
     <div id="ctaList"></div>
     <div class="modal-actions">
-      <button id="ctaCancelBtn" style="background-color: #E5E7EB; color: var(--text-primary);">Cancelar</button>
-      <button id="ctaConfirmBtn" style="background-color: var(--brand-primary); color: white;">Continuar</button>
+      <button id="ctaCancelBtn" style="background-color: #E5E7EB; color: var(--text-primary);">Cancel</button>
+      <button id="ctaConfirmBtn" style="background-color: var(--brand-primary); color: white;">Continue</button>
     </div>
   </div>
 </div>
-
 
 <script>
   const generateBtn = document.getElementById('generate');
@@ -124,12 +123,12 @@
   const ctaCancelBtn = document.getElementById('ctaCancelBtn');
 
   const resetGenerateButton = () => {
-    generateBtn.textContent = 'Converter Seleção';
+    generateBtn.textContent = 'Convert Selection';
     generateBtn.disabled = false;
   };
 
   generateBtn.onclick = () => {
-    generateBtn.textContent = 'Analisando...';
+    generateBtn.textContent = 'Analyzing...';
     generateBtn.disabled = true;
     outputTextarea.value = '';
     copyBtn.style.display = 'none';
@@ -138,8 +137,8 @@
 
   copyBtn.onclick = () => {
     navigator.clipboard.writeText(outputTextarea.value).then(() => {
-      copyBtn.textContent = 'Copiado!';
-      setTimeout(() => { copyBtn.textContent = 'Copiar Código'; }, 2000);
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => { copyBtn.textContent = 'Copy Code'; }, 2000);
     });
   };
 
@@ -147,7 +146,7 @@
     const confirmedCtaIds = Array.from(ctaList.querySelectorAll('input:checked')).map(input => input.value);
     parent.postMessage({ pluginMessage: { type: 'cta-confirmations-response', payload: { confirmedCtaIds } } }, '*');
     ctaModal.style.display = 'none';
-    generateBtn.textContent = 'A Converter...';
+    generateBtn.textContent = 'Converting...';
   };
 
   ctaCancelBtn.onclick = () => {
