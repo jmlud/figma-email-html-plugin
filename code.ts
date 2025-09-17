@@ -123,7 +123,7 @@ class FigmaPluginParser {
     const spacerWidth = node.itemSpacing || 8;
     const bulletHtml = await this.renderStyledTextSegmentsToHtml(bulletNode);
     const textHtml = await this.renderStyledTextSegmentsToHtml(textNode);
-    return `<tr><td style="text-align: left;" valign="top">${bulletHtml}</td><td width="${spacerWidth}">&nbsp;</td><td style="text-align: left;" valign="top">${textHtml}</td></tr>`;
+    return `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr><td style="text-align: left;" valign="top">${bulletHtml}</td><td width="${spacerWidth}">&nbsp;</td><td style="text-align: left;" valign="top">${textHtml}</td></tr></table>`;
   }
 
   private async renderCta(node: FrameNode | GroupNode): Promise<string> {
@@ -169,18 +169,18 @@ class FigmaPluginParser {
     }
     const tableStyleAttr = this.buildStyleAttribute([bgColor ? `background-color:${bgColor}` : '']);
     const tableBgColor = bgColor ? `bgcolor="${bgColor}"` : '';
-    const paddingTopHtml = paddingTop > 0 ? `<tr><td height="${paddingTop}" style="font-size:1px; line-height:${paddingTop}px;">&nbsp;</td></tr>` : '';
-    const paddingBottomHtml = paddingBottom > 0 ? `<tr><td height="${paddingBottom}" style="font-size:1px; line-height:${paddingBottom}px;">&nbsp;</td></tr>` : '';
+
+    const paddingTopValue = Math.round(paddingTop);
+    const paddingBottomValue = Math.round(paddingBottom);
+    const paddingTopHtml = paddingTopValue > 0 ? `<tr><td height="${paddingTopValue}" style="font-size:${paddingTopValue}px; line-height:${paddingTopValue}px;">&nbsp;</td></tr>` : '';
+    const paddingBottomHtml = paddingBottomValue > 0 ? `<tr><td height="${paddingBottomValue}" style="font-size:${paddingBottomValue}px; line-height:${paddingBottomValue}px;">&nbsp;</td></tr>` : '';
+    
     let contentRowHtml = '';
     if (innerHtml.trim() !== '') {
-      if (innerHtml.trim().startsWith('<tr')) {
-        contentRowHtml = innerHtml;
-      } else {
-        contentRowHtml = `<tr><td>${innerHtml}</td></tr>`;
-      }
+      contentRowHtml = `<tr><td>${innerHtml}</td></tr>`;
     }
     const finalInnerHtml = `${paddingTopHtml}${contentRowHtml}${paddingBottomHtml}`;
-    return `<table width="${Math.round(nodeWidth)}" border="0" cellpadding="0" cellspacing="0" ${tableStyleAttr} ${tableBgColor}>${finalInnerHtml}</table>`;
+    return `<table width="${Math.round(nodeWidth)}" border="0" cellpadding="0" cellspacing="0" role="presentation" ${tableStyleAttr} ${tableBgColor}>${finalInnerHtml}</table>`;
   }
 
   private async renderStackedChildren(parentNode: FrameNode | GroupNode | ComponentNode | InstanceNode): Promise<string> {
@@ -189,28 +189,34 @@ class FigmaPluginParser {
     let lastBottomY = children.length > 0 ? children[0].y : 0;
     const paddingLeft = 'paddingLeft' in parentNode ? parentNode.paddingLeft : 0;
     const paddingRight = 'paddingRight' in parentNode ? parentNode.paddingRight : 0;
+    
     for (const child of children) {
       if (!child.visible) continue;
-      const verticalGap = child.y - lastBottomY;
+      
+      const verticalGap = Math.round(child.y - lastBottomY);
       if (verticalGap > 2) {
-        rows.push(`<tr><td height="${Math.round(verticalGap)}" style="font-size:1px; line-height:${Math.round(verticalGap)}px;">&nbsp;</td></tr>`);
+        rows.push(`<tr><td height="${verticalGap}" style="font-size:${verticalGap}px; line-height:${verticalGap}px;">&nbsp;</td></tr>`);
       }
+      
       const childHtml = await this.renderNode(child);
       if (childHtml.trim()) {
-        const paddingStyles: string[] = [];
-        if (paddingLeft > 0) paddingStyles.push(`padding-left:${paddingLeft}px`);
-        if (paddingRight > 0) paddingStyles.push(`padding-right:${paddingRight}px`);
-        const styleAttr = this.buildStyleAttribute(paddingStyles);
-
-        if (childHtml.trim().startsWith('<tr')) {
-          rows.push(childHtml);
-        } else {
-          rows.push(`<tr><td ${styleAttr} valign="top">${childHtml}</td></tr>`);
+        const cols: string[] = [];
+        
+        if (paddingLeft > 0) {
+          cols.push(`<td width="${Math.round(paddingLeft)}">&nbsp;</td>`);
         }
+        
+        cols.push(`<td valign="top">${childHtml}</td>`);
+        
+        if (paddingRight > 0) {
+          cols.push(`<td width="${Math.round(paddingRight)}">&nbsp;</td>`);
+        }
+        
+        rows.push(`<tr>${cols.join('')}</tr>`);
       }
       lastBottomY = child.y + child.height;
     }
-    return `<table width="100%" border="0" cellpadding="0" cellspacing="0">${rows.join('')}</table>`;
+    return `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation">${rows.join('')}</table>`;
   }
 
   private async renderHorizontalChildren(parentNode: FrameNode): Promise<string> {
@@ -230,7 +236,7 @@ class FigmaPluginParser {
       }
     }
     if (paddingRight > 0) cols.push(`<td width="${paddingRight}">&nbsp;</td>`);
-    return `<table border="0" cellpadding="0" cellspacing="0"><tr>${cols.join('')}</tr></table>`;
+    return `<table border="0" cellpadding="0" cellspacing="0" role="presentation"><tr>${cols.join('')}</tr></table>`;
   }
 
   private async renderStyledTextSegmentsToHtml(node: TextNode): Promise<string> {
@@ -251,7 +257,13 @@ class FigmaPluginParser {
       styles.push(`font-size: ${Math.round(fontSize)}px`);
       styles.push(`font-weight: ${style.toLowerCase().includes('bold') ? '700' : '400'}`);
       if (lineHeight && lineHeight.unit !== 'AUTO') {
-        styles.push(`line-height: ${Math.round(lineHeight.value)}px`);
+        let finalLineHeight: number;
+        if (lineHeight.unit === 'PERCENT') {
+          finalLineHeight = Math.round((lineHeight.value / 100) * fontSize);
+        } else {
+          finalLineHeight = Math.round(lineHeight.value);
+        }
+        styles.push(`line-height: ${finalLineHeight}px`);
       }
       if (textDecoration === 'UNDERLINE') {
         styles.push('text-decoration: underline');
@@ -284,8 +296,14 @@ class FigmaPluginParser {
       props['font-family'] = fontStack.join(', ');
       props['font-size'] = `${Math.round(fontSize as number)}px`;
       props['font-weight'] = style.toLowerCase().includes('bold') ? '700' : '400';
-      if (lineHeight && 'value' in lineHeight) {
-        props['line-height'] = `${Math.round(lineHeight.value)}px`;
+      if (lineHeight && lineHeight.unit !== 'AUTO') {
+        let finalLineHeight: number;
+        if (lineHeight.unit === 'PERCENT') {
+          finalLineHeight = Math.round((lineHeight.value / 100) * (fontSize as number));
+        } else {
+          finalLineHeight = Math.round(lineHeight.value);
+        }
+        props['line-height'] = `${finalLineHeight}px`;
       }
       if (textDecoration === 'UNDERLINE') {
         props['text-decoration'] = 'underline';
@@ -314,7 +332,7 @@ class FigmaPluginParser {
         innerHtml += finalContent;
       }
     }
-    return `<table width="100%" border="0" cellpadding="0" cellspacing="0"><tr><td style="${tdStyleString}" valign="top">${innerHtml}</td></tr></table>`;
+    return `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr><td style="${tdStyleString}" valign="top">${innerHtml}</td></tr></table>`;
   }
 
   private renderShape(node: SceneNode): string {
@@ -322,7 +340,7 @@ class FigmaPluginParser {
     const fills = (node as RectangleNode).fills;
     const fill = 'fills' in node && Array.isArray(fills) ? (fills.find(f => f.type === 'SOLID' && f.visible) as SolidPaint) : undefined;
     const bgColor = fill ? `bgcolor="${this.getSolidHexForFill(fill, node)}"` : '';
-    return `<table width="${Math.round(width)}" height="${Math.round(height)}" border="0" cellpadding="0" cellspacing="0"><tr><td ${bgColor} style="font-size:1px; line-height:1px;">&nbsp;</td></tr></table>`;
+    return `<table width="${Math.round(width)}" height="${Math.round(height)}" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr><td ${bgColor} style="font-size:1px; line-height:1px;">&nbsp;</td></tr></table>`;
   }
 
   private renderImagePlaceholder(node: SceneNode): string {
@@ -346,22 +364,20 @@ class FigmaPluginParser {
       for (let i = 0; i < sortedNodes.length; i++) {
         const node = sortedNodes[i];
         if (i > 0) {
-          const gap = node.y - lastBottomY;
+          const gap = Math.round(node.y - lastBottomY);
           if (gap > 2) {
-            rows.push(`<tr><td height="${Math.round(gap)}" style="font-size:1px; line-height:${Math.round(gap)}px;">&nbsp;</td></tr>`);
+            rows.push(`<tr><td height="${gap}" style="font-size:${gap}px; line-height:${gap}px;">&nbsp;</td></tr>`);
           }
         }
         const nodeHtml = await this.renderNode(node);
-        if (nodeHtml.trim().startsWith('<tr')) {
-          rows.push(nodeHtml);
-        } else if (nodeHtml.trim()) {
+        if (nodeHtml.trim()) {
           rows.push(`<tr><td>${nodeHtml}</td></tr>`);
         }
         if (node.visible) {
           lastBottomY = node.y + node.height;
         }
       }
-      finalHtml = `<table width="100%" border="0" cellpadding="0" cellspacing="0">${rows.join('')}</table>`;
+      finalHtml = `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation">${rows.join('')}</table>`;
     }
     return finalHtml.replace(/<\/?tbody>/g, '').replace(/<tr[^>]*>\s*<td[^>]*>\s*<\/td>\s*<\/tr>/g, '').replace(/<tr[^>]*>\s*<\/tr>/g, '');
   }
