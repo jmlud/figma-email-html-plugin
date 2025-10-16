@@ -185,27 +185,69 @@ class FigmaPluginParser {
 
   private async renderStackedChildren(parentNode: FrameNode | GroupNode | ComponentNode | InstanceNode, parentWidth: number, parentBgColor: RgbColor, imageExportMode: ImageExportMode): Promise<string> {
     const children = ("children" in parentNode ? [...parentNode.children] : []).filter(c => c.visible);
-    if ('layoutMode' in parentNode && parentNode.layoutMode !== 'VERTICAL') children.sort((a,b) => a.y - b.y);
+    if ('layoutMode' in parentNode && parentNode.layoutMode !== 'VERTICAL') {
+      children.sort((a, b) => a.y - b.y);
+    }
+  
     const rows: string[] = [];
     let lastBottomY = ('paddingTop' in parentNode ? parentNode.paddingTop : 0) as number;
     const paddingLeft = ('paddingLeft' in parentNode ? parentNode.paddingLeft : 0) as number;
     const paddingRight = ('paddingRight' in parentNode ? parentNode.paddingRight : 0) as number;
     const availableWidth = parentWidth - paddingLeft - paddingRight;
-
-    for (const child of children) {
+  
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
       const verticalGap = Math.round(child.y - lastBottomY);
-      if (verticalGap > 2) rows.push(`<tr><td height="${verticalGap}" style="height:${verticalGap}px; font-size:${verticalGap}px; line-height:${verticalGap}px;" colspan="3">&nbsp;</td></tr>`);
-      const childHtml = await this.renderNode(child, availableWidth, parentBgColor, imageExportMode);
-      if (childHtml) {
-        const leftSpacer = paddingLeft > 0 ? `<td class="gutter" width="${paddingLeft}" style="width: ${paddingLeft}px;">&nbsp;</td>` : "";
-        const rightSpacer = paddingRight > 0 ? `<td class="gutter" width="${paddingRight}" style="width: ${paddingRight}px;">&nbsp;</td>` : "";
-        rows.push(`<tr>${leftSpacer}<td>${childHtml}</td>${rightSpacer}</tr>`);
+      if (verticalGap > 2) {
+        rows.push(`<tr><td height="${verticalGap}" style="height:${verticalGap}px; font-size:${verticalGap}px; line-height:${verticalGap}px;" colspan="3">&nbsp;</td></tr>`);
       }
-      lastBottomY = child.y + child.height;
+  
+      const leftSpacer = paddingLeft > 0 ? `<td class="gutter" width="${paddingLeft}" style="width: ${paddingLeft}px;">&nbsp;</td>` : "";
+      const rightSpacer = paddingRight > 0 ? `<td class="gutter" width="${paddingRight}" style="width: ${paddingRight}px;">&nbsp;</td>` : "";
+  
+      if (child.type === 'TEXT') {
+        const textGroup: TextNode[] = [child];
+        let j = i + 1;
+        while (j < children.length && children[j].type === 'TEXT') {
+          textGroup.push(children[j] as TextNode);
+          j++;
+        }
+  
+        const textRows: string[] = [];
+        let lastTextNodeInGroupBottomY = child.y;
+  
+        for (const [index, textNode] of textGroup.entries()) {
+          const gapWithinGroup = Math.round(textNode.y - lastTextNodeInGroupBottomY);
+          if (index > 0 && gapWithinGroup > 2) {
+            textRows.push(`<tr><td height="${gapWithinGroup}" style="height:${gapWithinGroup}px; font-size:${gapWithinGroup}px; line-height:${gapWithinGroup}px;">&nbsp;</td></tr>`);
+          }
+          const contentHtml = await this.renderTextContent(textNode, parentBgColor);
+          if (contentHtml) {
+            const textAlign = (textNode.textAlignHorizontal || 'LEFT').toLowerCase();
+            const styles = this.sanitizeStyles(this.cleanZeroValueStyles([this.getBorderStyles(textNode)].filter(Boolean).join(";")));
+            const finalTdStyle = `${styles ? `${styles};` : ''}text-align: ${textAlign};`;
+            textRows.push(`<tr><td align="${textAlign}" style="${finalTdStyle}">${contentHtml}</td></tr>`);
+          }
+          lastTextNodeInGroupBottomY = textNode.y + textNode.height;
+        }
+  
+        const groupHtml = `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation">${textRows.join('')}</table>`;
+        rows.push(`<tr>${leftSpacer}<td>${groupHtml}</td>${rightSpacer}</tr>`);
+  
+        i = j - 1; 
+        lastBottomY = lastTextNodeInGroupBottomY;
+      } else {
+        const childHtml = await this.renderNode(child, availableWidth, parentBgColor, imageExportMode);
+        if (childHtml) {
+          rows.push(`<tr>${leftSpacer}<td>${childHtml}</td>${rightSpacer}</tr>`);
+        }
+        lastBottomY = child.y + child.height;
+      }
     }
+  
     return `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation">${rows.join('')}</table>`;
   }
-
+    
   private async renderContainer(node: FrameNode | GroupNode | ComponentNode | InstanceNode, parentWidth: number, parentBgColor: RgbColor, isRoot: boolean, imageExportMode: ImageExportMode): Promise<string> {
     const { hex: bgColorHex, rgb: effectiveBgRgb } = this.getEffectiveBackgroundColor(node, parentBgColor);
     const children = "children" in node ? node.children.filter(c => c.visible) : [];
@@ -236,12 +278,11 @@ class FigmaPluginParser {
 
     return `<table width="${width}" ${bgColorHex ? `bgcolor="${bgColorHex}"` : ''} ${tableStyles ? `style="${tableStyles}"` : ''} cellpadding="0" cellspacing="0" border="0" role="presentation">${finalInnerHtml}</table>`;
   }
-    
+  
   private async renderHorizontalChildren(node: FrameNode, parentWidth: number, parentBgColor: RgbColor, imageExportMode: ImageExportMode): Promise<string> {
     const children = (node.children || []).filter((c) => c.visible !== false);
     const itemSpacing = typeof node.itemSpacing === 'number' ? Math.round(node.itemSpacing) : 0;
     const cells: string[] = [];
-    const isSpaceBetween = node.primaryAxisAlignItems === 'SPACE_BETWEEN' && children.length > 1;
 
     for (const [index, child] of children.entries()) {
       const childHtml = await this.renderNode(child, child.width, parentBgColor, imageExportMode);
@@ -249,9 +290,9 @@ class FigmaPluginParser {
       if (node.counterAxisAlignItems === 'CENTER') valign = 'middle';
       if (node.counterAxisAlignItems === 'MAX') valign = 'bottom';
       cells.push(`<td valign="${valign}">${childHtml}</td>`);
-      if (index < children.length - 1) {
-        if (isSpaceBetween) cells.push(`<td width="100%">&nbsp;</td>`);
-        else if (itemSpacing > 0) cells.push(`<td width="${itemSpacing}" style="width: ${itemSpacing}px;">&nbsp;</td>`);
+      
+      if (index < children.length - 1 && itemSpacing > 0) {
+        cells.push(`<td width="${itemSpacing}" style="width: ${itemSpacing}px;">&nbsp;</td>`);
       }
     }
     return `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr>${cells.join('')}</tr></table>`;
