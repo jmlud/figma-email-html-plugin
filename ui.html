@@ -31,16 +31,15 @@
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
-    transition: background-color 0.2s ease-in-out;
+    transition: background-color 0.2s ease-in-out, opacity 0.2s ease-in-out;
   }
   button:disabled {
-    opacity: 0.5;
+    opacity: 0.6;
     cursor: not-allowed;
   }
   #generate {
     background-color: var(--brand-primary);
     color: white;
-    margin-bottom: 16px;
   }
   #generate:not(:disabled):hover {
     background-color: var(--brand-primary-hover);
@@ -52,6 +51,30 @@
   }
   #copyBtn:not(:disabled):hover {
     background-color: var(--brand-secondary-hover);
+  }
+  .image-options {
+    margin-bottom: 16px;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+  }
+  .image-options legend {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0 4px;
+    color: var(--text-secondary);
+  }
+  .image-options div {
+    display: flex;
+    justify-content: space-around;
+    padding-top: 6px;
+  }
+  .image-options label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    cursor: pointer;
   }
   textarea {
     flex-grow: 1;
@@ -65,62 +88,34 @@
     font-size: 12px;
     background-color: var(--bg-textarea);
     color: var(--text-primary);
+    margin-top: 16px;
   }
-  textarea:focus {
-    outline: none;
-    border-color: var(--brand-primary);
-    box-shadow: 0 0 0 2px rgba(109, 40, 217, 0.2);
-  }
-  .modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .modal-content {
-    background: white;
-    padding: 20px;
-    border-radius: 8px;
-    width: 80%;
-    max-width: 350px;
-  }
-  .modal-content h3 { margin-top: 0; }
-  .cta-item { display: flex; align-items: center; margin-bottom: 8px; }
-  .cta-item input { margin-right: 8px; }
-  .modal-actions { margin-top: 20px; display: flex; justify-content: flex-end; gap: 8px; }
 </style>
 
 <div class="container">
-  <button id="generate">Convert Selection</button>
-  <textarea id="output" readonly placeholder="Select one or more elements in Figma and click 'Convert'..."></textarea>
-  <button id="copyBtn" style="display: none;">Copy Code</button>
-</div>
-
-<div id="ctaModal" class="modal-overlay" style="display: none;">
-  <div class="modal-content">
-    <h3>Confirm Buttons (CTAs)</h3>
-    <p style="font-size: 13px; color: var(--text-secondary);">Select the elements that should be converted as clickable buttons.</p>
-    <div id="ctaList"></div>
-    <div class="modal-actions">
-      <button id="ctaCancelBtn" style="background-color: #E5E7EB; color: var(--text-primary);">Cancel</button>
-      <button id="ctaConfirmBtn" style="background-color: var(--brand-primary); color: white;">Continue</button>
+  <fieldset class="image-options">
+    <legend>Image Export Options</legend>
+    <div>
+      <label>
+        <input type="radio" name="imageExport" value="placeholder" checked> Placeholder
+      </label>
+      <label>
+        <input type="radio" name="imageExport" value="base64"> Base64
+      </label>
     </div>
-  </div>
+  </fieldset>
+
+  <button id="generate">Convert Selection</button>
+
+  <textarea id="output" readonly placeholder="Select one or more elements and click 'Convert'..."></textarea>
+  
+  <button id="copyBtn" style="display: none;">Copy Code</button>
 </div>
 
 <script>
   const generateBtn = document.getElementById('generate');
   const outputTextarea = document.getElementById('output');
   const copyBtn = document.getElementById('copyBtn');
-  const ctaModal = document.getElementById('ctaModal');
-  const ctaList = document.getElementById('ctaList');
-  const ctaConfirmBtn = document.getElementById('ctaConfirmBtn');
-  const ctaCancelBtn = document.getElementById('ctaCancelBtn');
 
   const resetGenerateButton = () => {
     generateBtn.textContent = 'Convert Selection';
@@ -128,11 +123,19 @@
   };
 
   generateBtn.onclick = () => {
-    generateBtn.textContent = 'Analyzing...';
+    generateBtn.textContent = 'Converting...';
     generateBtn.disabled = true;
     outputTextarea.value = '';
     copyBtn.style.display = 'none';
-    parent.postMessage({ pluginMessage: { type: 'generate-html-for-selection' } }, '*');
+    
+    const imageExportMode = document.querySelector('input[name="imageExport"]:checked').value;
+    
+    parent.postMessage({ 
+      pluginMessage: { 
+        type: 'generate-html-for-selection',
+        payload: { imageExportMode }
+      } 
+    }, '*');
   };
 
   copyBtn.onclick = () => {
@@ -142,39 +145,16 @@
     });
   };
 
-  ctaConfirmBtn.onclick = () => {
-    const confirmedCtaIds = Array.from(ctaList.querySelectorAll('input:checked')).map(input => input.value);
-    parent.postMessage({ pluginMessage: { type: 'cta-confirmations-response', payload: { confirmedCtaIds } } }, '*');
-    ctaModal.style.display = 'none';
-    generateBtn.textContent = 'Converting...';
-  };
-
-  ctaCancelBtn.onclick = () => {
-    ctaModal.style.display = 'none';
-    resetGenerateButton();
-  };
-
   window.onmessage = (event) => {
     const { type, payload } = event.data.pluginMessage;
 
     if (type === 'generated-html') {
-      outputTextarea.value = payload;
-      copyBtn.style.display = payload ? 'block' : 'none';
+      outputTextarea.value = payload.html;
       resetGenerateButton();
-    }
-    
-    if (type === 'request-cta-confirmations') {
-      ctaList.innerHTML = '';
-      payload.forEach(cta => {
-        const item = document.createElement('div');
-        item.className = 'cta-item';
-        item.innerHTML = `
-          <input type="checkbox" id="${cta.id}" value="${cta.id}" checked>
-          <label for="${cta.id}" style="font-size: 14px;">${cta.name}</label>
-        `;
-        ctaList.appendChild(item);
-      });
-      ctaModal.style.display = 'flex';
+
+      if (payload.html) {
+          copyBtn.style.display = 'block';
+      }
     }
   };
 </script>
